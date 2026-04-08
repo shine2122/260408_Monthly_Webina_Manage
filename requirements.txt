@@ -1,0 +1,5 @@
+requests==2.31.0
+schedule==1.2.1
+pyinstaller==6.3.0
+pyairtable==3.3.0
+solapi==5.0.2

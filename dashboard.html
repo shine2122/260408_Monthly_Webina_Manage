@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>크리AI티브 웨비나 운영 대시보드</title>
+  <style>
+    /* ── 리셋 & 기본 ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; background: #f4f5f7; color: #222; font-size: 14px; }
+
+    /* ── 헤더 ── */
+    header {
+      background: #534AB7;
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    .header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+    .last-updated { opacity: 0.85; }
+    #btn-refresh {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.4);
+      color: #fff;
+      padding: 5px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s;
+    }
+    #btn-refresh:hover { background: rgba(255,255,255,0.35); }
+
+    /* ── 경고 배너 ── */
+    #banner {
+      display: none;
+      background: #fff3cd;
+      border-left: 4px solid #f0a500;
+      padding: 10px 20px;
+      font-size: 13px;
+      color: #7a5800;
+    }
+    #error-banner {
+      display: none;
+      background: #fde8e8;
+      border-left: 4px solid #e53e3e;
+      padding: 10px 20px;
+      font-size: 13px;
+      color: #9b1c1c;
+    }
+
+    /* ── 본문 컨테이너 ── */
+    .container { padding: 20px; max-width: 1100px; margin: 0 auto; }
+
+    /* ── 요약 카드 ── */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 640px) { .summary-cards { grid-template-columns: repeat(2, 1fr); } }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px 18px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .card .label { font-size: 12px; color: #888; margin-bottom: 6px; }
+    .card .value { font-size: 28px; font-weight: 700; }
+    .card.total  .value { color: #555; }
+    .card.paid   .value { color: #2e7d32; }
+    .card.unpaid .value { color: #e65100; }
+    .card.sent   .value { color: #1565c0; }
+
+    /* ── 필터 & 검색 바 ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .filter-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .filter-btn {
+      border: 1px solid #ccc;
+      background: #fff;
+      padding: 5px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    .filter-btn.active {
+      background: #534AB7;
+      border-color: #534AB7;
+      color: #fff;
+    }
+    .search-wrap { margin-left: auto; }
+    #search-input {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 13px;
+      width: 160px;
+      outline: none;
+    }
+    #search-input:focus { border-color: #534AB7; }
+
+    /* ── 테이블 ── */
+    .table-wrap {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      overflow: auto;
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 560px; }
+    thead tr { background: #f9f9fb; }
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #555;
+      border-bottom: 1px solid #e8e8ec;
+      white-space: nowrap;
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #f0f0f3;
+      font-size: 13px;
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr.paid-row { background: #f0faf0; }
+    tr:hover td { background: #f5f3ff; }
+
+    /* ── 뱃지 ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-unsent      { background: #eee; color: #666; }
+    .badge-confirmed   { background: #fff9c4; color: #7a6000; }
+    .badge-link        { background: #dbeafe; color: #1e40af; }
+    .badge-feedback    { background: #dcfce7; color: #166534; }
+    .badge-done        { background: #16a34a; color: #fff; }
+
+    .paid-icon   { color: #2e7d32; font-weight: 700; }
+    .unpaid-icon { color: #bbb; }
+
+    /* ── 로딩 스피너 ── */
+    #loading {
+      display: none;
+      text-align: center;
+      padding: 40px;
+      color: #888;
+      font-size: 13px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 22px; height: 22px;
+      border: 3px solid #ddd;
+      border-top-color: #534AB7;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── 빈 상태 ── */
+    #empty { display: none; text-align: center; padding: 40px; color: #aaa; font-size: 13px; }
+
+    /* ── 설정 모달 ── */
+    #cfg-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #cfg-overlay.open { display: flex; }
+    #cfg-modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 28px 28px 22px;
+      width: min(480px, 94vw);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    #cfg-modal h2 { font-size: 15px; margin-bottom: 18px; color: #534AB7; }
+    .cfg-row { margin-bottom: 12px; }
+    .cfg-row label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+    .cfg-row input {
+      width: 100%; border: 1px solid #ccc; border-radius: 6px;
+      padding: 7px 10px; font-size: 13px; outline: none;
+    }
+    .cfg-row input:focus { border-color: #534AB7; }
+    .cfg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .btn-primary {
+      background: #534AB7; color: #fff;
+      border: none; border-radius: 6px;
+      padding: 8px 20px; cursor: pointer; font-size: 13px;
+    }
+    .btn-secondary {
+      background: #f0f0f0; color: #444;
+      border: none; border-radius: 6px;
+      padding: 8px 16px; cursor: pointer; font-size: 13px;
+    }
+    #btn-open-settings {
+      border: 1px solid #534AB7; color: #534AB7;
+      background: #fff; padding: 5px 14px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── 설정 모달 ── -->
+<div id="cfg-overlay">
+  <div id="cfg-modal">
+    <h2>대시보드 설정</h2>
+    <div class="cfg-row">
+      <label>Airtable 읽기 전용 PAT (Personal Access Token)</label>
+      <input type="password" id="cfg-pat" placeholder="pat_xxxxxxxxxxxxxxxx">
+    </div>
+    <div class="cfg-row">
+      <label>Airtable Base ID</label>
+      <input type="text" id="cfg-base" placeholder="appXXXXXXXXXXXXXX">
+    </div>
+    <div class="cfg-row">
+      <label>테이블명</label>
+      <input type="text" id="cfg-table" placeholder="웨비나접수">
+    </div>
+    <div class="cfg-actions">
+      <button class="btn-secondary" id="btn-cfg-cancel">취소</button>
+      <button class="btn-primary" id="btn-cfg-save">저장 후 불러오기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 헤더 ── -->
+<header>
+  <h1>크리AI티브 웨비나 운영 대시보드</h1>
+  <div class="header-right">
+    <span class="last-updated">마지막 업데이트: <span id="last-time">-</span></span>
+    <button id="btn-open-settings">⚙ 설정</button>
+    <button id="btn-refresh">↻ 새로고침</button>
+  </div>
+</header>
+
+<!-- ── 배너 ── -->
+<div id="banner">⚠ Airtable 설정이 필요합니다. 오른쪽 상단 <strong>⚙ 설정</strong> 버튼을 눌러 PAT·Base ID·테이블명을 입력하세요.</div>
+<div id="error-banner"></div>
+
+<!-- ── 본문 ── -->
+<div class="container">
+
+  <!-- 요약 카드 -->
+  <div class="summary-cards">
+    <div class="card total">
+      <div class="label">총 접수</div>
+      <div class="value" id="cnt-total">-</div>
+    </div>
+    <div class="card paid">
+      <div class="label">입금 완료</div>
+      <div class="value" id="cnt-paid">-</div>
+    </div>
+    <div class="card unpaid">
+      <div class="label">미입금</div>
+      <div class="value" id="cnt-unpaid">-</div>
+    </div>
+    <div class="card sent">
+      <div class="label">발송 완료</div>
+      <div class="value" id="cnt-sent">-</div>
+    </div>
+  </div>
+
+  <!-- 필터 & 검색 -->
+  <div class="toolbar">
+    <div class="filter-btns">
+      <button class="filter-btn active" data-filter="all">전체</button>
+      <button class="filter-btn" data-filter="paid">입금완료</button>
+      <button class="filter-btn" data-filter="unpaid">미입금</button>
+      <button class="filter-btn" data-filter="pending">확인발송 대기</button>
+    </div>
+    <div class="search-wrap">
+      🔍 <input type="text" id="search-input" placeholder="이름 검색...">
+    </div>
+  </div>
+
+  <!-- 로딩 -->
+  <div id="loading"><span class="spinner"></span>데이터 불러오는 중...</div>
+  <div id="empty">조건에 맞는 접수자가 없습니다.</div>
+
+  <!-- 테이블 -->
+  <div class="table-wrap" id="table-wrap">
+    <table id="main-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>이름</th>
+          <th>활동명</th>
+          <th>수준</th>
+          <th>입금</th>
+          <th>발송상태</th>
+          <th>접수일시</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  설정 (localStorage 기반 — 새로고침해도 유지됨)
+// ════════════════════════════════════════════════════════════
+const LS_KEY = 'crilab_dashboard_cfg';
+
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
+}
+function saveCfg(cfg) { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }
+
+let CFG = loadCfg();
+
+// ════════════════════════════════════════════════════════════
+//  Airtable API 호출
+// ════════════════════════════════════════════════════════════
+async function fetchRecords() {
+  const { pat, baseId, tableName } = CFG;
+  if (!pat || !baseId || !tableName) return null;
+
+  let allRecords = [];
+  let offset = null;
+  const base = `https://api.airtable.com/v0/${encodeURIComponent(baseId)}/${encodeURIComponent(tableName)}`;
+
+  do {
+    const url = new URL(base);
+    if (offset) url.searchParams.set('offset', offset);
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${pat}` }
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`Airtable API 오류 (${res.status}): ${err?.error?.message || res.statusText}`);
+    }
+
+    const data = await res.json();
+    allRecords = allRecords.concat(data.records || []);
+    offset = data.offset || null;
+  } while (offset);
+
+  return allRecords;
+}
+
+// ════════════════════════════════════════════════════════════
+//  데이터 정규화
+// ════════════════════════════════════════════════════════════
+function normalizeRecords(raw) {
+  return raw.map((r, i) => {
+    const f = r.fields || {};
+    return {
+      idx: i + 1,
+      name: f['성함'] || f['이름'] || '',
+      nickname: f['활동명'] || '',
+      level: f['수준'] || '',
+      paid: !!f['입금완료'],
+      sendStatus: f['발송상태'] || '미발송',
+      createdTime: r.createdTime || '',
+    };
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  요약 카드 렌더링
+// ════════════════════════════════════════════════════════════
+function renderSummaryCards(data) {
+  const total = data.length;
+  const paid = data.filter(r => r.paid).length;
+  const unpaid = total - paid;
+  // 발송 완료: 발송상태가 미발송이 아닌 경우
+  const sent = data.filter(r => r.sendStatus && r.sendStatus !== '미발송').length;
+
+  document.getElementById('cnt-total').textContent = total + '명';
+  document.getElementById('cnt-paid').textContent = paid + '명';
+  document.getElementById('cnt-unpaid').textContent = unpaid + '명';
+  document.getElementById('cnt-sent').textContent = sent + '명';
+}
+
+// ════════════════════════════════════════════════════════════
+//  발송상태 뱃지
+// ════════════════════════════════════════════════════════════
+function statusBadge(status) {
+  const map = {
+    '미발송': ['badge-unsent', '미발송'],
+    '확인발송완료': ['badge-confirmed', '확인발송완료'],
+    '링크발송완료': ['badge-link', '링크발송완료'],
+    '피드백발송완료': ['badge-feedback', '피드백발송완료'],
+    '완료': ['badge-done', '완료'],
+  };
+  const [cls, label] = map[status] || ['badge-unsent', status || '미발송'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  테이블 렌더링
+// ════════════════════════════════════════════════════════════
+function renderTable(data) {
+  const tbody = document.getElementById('table-body');
+  const empty = document.getElementById('empty');
+
+  if (!data || data.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('table-wrap').style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  document.getElementById('table-wrap').style.display = 'block';
+
+  tbody.innerHTML = data.map(r => {
+    const paidIcon = r.paid
+      ? '<span class="paid-icon">✓</span>'
+      : '<span class="unpaid-icon">-</span>';
+    const date = r.createdTime
+      ? new Date(r.createdTime).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })
+      : '-';
+    const rowClass = r.paid ? ' class="paid-row"' : '';
+
+    return `<tr${rowClass}>
+      <td>${r.idx}</td>
+      <td><strong>${r.name}</strong></td>
+      <td>${r.nickname || '-'}</td>
+      <td>${r.level || '-'}</td>
+      <td>${paidIcon}</td>
+      <td>${statusBadge(r.sendStatus)}</td>
+      <td>${date}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+//  필터 & 검색
+// ════════════════════════════════════════════════════════════
+function filterData(data, filter) {
+  switch (filter) {
+    case 'paid':    return data.filter(r => r.paid);
+    case 'unpaid':  return data.filter(r => !r.paid);
+    case 'pending': return data.filter(r => r.paid && r.sendStatus === '미발송');
+    default:        return data;
+  }
+}
+
+function searchData(data, keyword) {
+  if (!keyword.trim()) return data;
+  const kw = keyword.trim().toLowerCase();
+  return data.filter(r =>
+    r.name.toLowerCase().includes(kw) ||
+    r.nickname.toLowerCase().includes(kw)
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+//  마지막 업데이트 시각
+// ════════════════════════════════════════════════════════════
+function showLastUpdated() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('last-time').textContent = `${hh}:${mm}:${ss}`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  에러 배너
+// ════════════════════════════════════════════════════════════
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.style.display = 'block';
+  el.textContent = '⚠ ' + msg;
+}
+function hideError() {
+  document.getElementById('error-banner').style.display = 'none';
+}
+
+// ════════════════════════════════════════════════════════════
+//  메인 로드 흐름
+// ════════════════════════════════════════════════════════════
+let allData = [];
+let activeFilter = 'all';
+let searchKeyword = '';
+
+function applyView() {
+  let view = filterData(allData, activeFilter);
+  view = searchData(view, searchKeyword);
+  renderTable(view);
+}
+
+async function loadData() {
+  const { pat, baseId, tableName } = CFG;
+
+  if (!pat || !baseId || !tableName) {
+    document.getElementById('banner').style.display = 'block';
+    return;
+  }
+
+  document.getElementById('banner').style.display = 'none';
+  hideError();
+
+  const loading = document.getElementById('loading');
+  loading.style.display = 'block';
+  document.getElementById('table-wrap').style.display = 'none';
+  document.getElementById('empty').style.display = 'none';
+
+  try {
+    const raw = await fetchRecords();
+    allData = normalizeRecords(raw);
+    renderSummaryCards(allData);
+    applyView();
+    showLastUpdated();
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    loading.style.display = 'none';
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  자동 새로고침 (30초)
+// ════════════════════════════════════════════════════════════
+function startAutoRefresh() {
+  setInterval(() => { loadData(); }, 30000);
+}
+
+// ════════════════════════════════════════════════════════════
+//  이벤트 바인딩
+// ════════════════════════════════════════════════════════════
+
+// 새로고침 버튼
+document.getElementById('btn-refresh').addEventListener('click', loadData);
+
+// 필터 탭
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    applyView();
+  });
+});
+
+// 검색
+document.getElementById('search-input').addEventListener('input', e => {
+  searchKeyword = e.target.value;
+  applyView();
+});
+
+// 설정 모달 열기
+document.getElementById('btn-open-settings').addEventListener('click', () => {
+  const cfg = loadCfg();
+  document.getElementById('cfg-pat').value = cfg.pat || '';
+  document.getElementById('cfg-base').value = cfg.baseId || '';
+  document.getElementById('cfg-table').value = cfg.tableName || '웨비나접수';
+  document.getElementById('cfg-overlay').classList.add('open');
+});
+
+// 설정 취소
+document.getElementById('btn-cfg-cancel').addEventListener('click', () => {
+  document.getElementById('cfg-overlay').classList.remove('open');
+});
+
+// 설정 저장
+document.getElementById('btn-cfg-save').addEventListener('click', () => {
+  CFG = {
+    pat: document.getElementById('cfg-pat').value.trim(),
+    baseId: document.getElementById('cfg-base').value.trim(),
+    tableName: document.getElementById('cfg-table').value.trim() || '웨비나접수',
+  };
+  saveCfg(CFG);
+  document.getElementById('cfg-overlay').classList.remove('open');
+  loadData();
+});
+
+// 모달 외부 클릭 닫기
+document.getElementById('cfg-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('cfg-overlay')) {
+    document.getElementById('cfg-overlay').classList.remove('open');
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+//  초기 실행
+// ════════════════════════════════════════════════════════════
+loadData();
+startAutoRefresh();
+</script>
+</body>
+</html>
