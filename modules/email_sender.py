@@ -159,6 +159,10 @@ def send_bulk_email(recipients, template_name, extra_context=None):
             "webinar_date": webinar.get("date", ""),
             "webinar_time": webinar.get("time", ""),
             "webinar_title": webinar.get("title", "크리AI티브 웨비나"),
+            "speaker1": webinar.get("speaker1", ""),
+            "speaker2": webinar.get("speaker2", ""),
+            "topic1": webinar.get("topic1", ""),
+            "topic2": webinar.get("topic2", ""),
         }
         if extra_context:
             context.update(extra_context)

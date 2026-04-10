@@ -162,6 +162,89 @@ https://docs.google.com/spreadsheets/d/1d2ECYwdga35UuXLsazXDd2CaCJh5hiOpnWIdpLgp
 
 ---
 
+## 2026-04-08 (Day 2)
+
+### 6. GitHub에서 최신 코드 동기화하고 SMS 서비스를 뿌리오에서 Solapi로 교체
+
+```
+https://github.com/shine2122/260408_Monthly_Webina_Manage 이 폴더를 git pull해줘
+
+뿌리오 대신 solapi를 사용할 거야. 뿌리오와 관련된 것은 제거해줘
+```
+
+**Claude Code 작업:**
+- GitHub에서 최신 코드를 받아 로컬 동기화 진행
+- `dist/config.json` 위치를 확인하고 경로 정리
+- `modules/sms_sender.py`에서 뿌리오 의존 코드를 제거하고 Solapi 기반으로 교체
+- SMS 발송 로직을 Solapi API 형식에 맞게 재작성
+
+---
+
+### 7. 발송 기능 개선: 운영자가 직접 문구를 붙여넣고 테스트 발송까지
+
+```
+자 이제 이것을 내가 사용하는 나만의 서비스로 생각하고 개선사항을 정리해줘.
+발송 내용은 내가 작성해서 줄께, 붙여 넣기 할 수 있게 해줘. 그리고 테스트 발송 버튼을 만들어줘.
+
+테스트 발송 부분은 나에게 발송해 보는 거야.
+내 이메일은 cri.ai.tive@gmail.com, 전화번호는 010-2895-0774
+```
+
+**Claude Code 작업:**
+- 발송 문구를 코드 안에 고정하지 않고, 운영자가 UI에서 직접 붙여넣기할 수 있도록 입력 영역 추가
+- 실제 운영자 이메일/번호로 테스트 발송 버튼 구현
+- `main.py` - 발송 내용 입력 UI와 테스트 발송 흐름 반영
+- `modules/email_sender.py` - 발송 내용 외부 주입 방식으로 수정
+- `modules/sms_sender.py` - 동일 방식으로 SMS 발송 내용 처리 수정
+- `templates/email_link.html` - 발송용 이메일 템플릿 구조 조정
+
+---
+
+### 8. 가상 테스트 데이터 26명 씨딩
+
+```
+가상의 데이터 26명만 넣어줘. 그들의 인적사항이나 이런 내용을 만들어줘.
+이메일로 전달된 피드백 링크가 테스트라 그런지 열리지 않아. 문자 발송이 안되고 있어 테스트에서도 문자 발송이 되게 해줘.
+```
+
+**Claude Code 작업:**
+- 26명의 가상 신청자 데이터(이름, 활동명, 이메일, 전화번호, 수준, 입금여부)를 직접 설계
+- 입금완료 20명 / 미입금 6명으로 현실적인 비율 구성
+- `seed_test_data.py` 생성 — Airtable `웨비나접수_통합` 테이블에 10건씩 배치 삽입
+- 피드백 이메일 링크 오류 원인 점검 및 수정
+- 테스트 환경에서도 실제 SMS 발송이 되도록 조건 처리
+
+---
+
+### 9. 웹 대시보드를 Vercel에 배포하고 Airtable 데이터 연동
+
+```
+현재 작업 결과중 vercel로 옮겨서 하면 유리한 것은 뭐야?
+dashboard는 그렇게 할 필요가 없을까?
+
+vercel --prod
+
+대시보드 설정이 안되어 있어. airtable api 문제 때문이네. 이것을 해결할 방법은 없어??? 자동화 해줘
+```
+
+**Claude Code 작업:**
+- 운영 대시보드를 EXE가 아닌 웹으로 공개하면 어디서든 접근 가능하다고 판단
+- `web_portal/dashboard/index.html` — 운영 현황 대시보드 UI 구현
+  - 총 접수/입금완료/미입금/발송완료 요약 카드 4개
+  - 입금 상태별 필터 버튼 (전체/입금완료/미입금/확인발송 대기)
+  - 이름·활동명 실시간 검색
+  - 30초 자동 새로고침
+  - 발송상태 뱃지 (미발송/확인발송완료/링크발송완료/피드백발송완료/완료)
+- `web_portal/dashboard/dashboard_config.js` — Vercel 환경변수 주입용 설정 파일
+- `web_portal/api/records.js` — Airtable 데이터를 안전하게 불러오는 Vercel 서버리스 프록시
+  - 테이블명·기준월 필터 파라미터 지원
+  - Airtable 페이지네이션(offset) 자동 처리
+- `web_portal/vercel.json` — `/dashboard` 라우팅 추가
+- Airtable PAT 설정을 대시보드 UI의 설정 모달에서 직접 입력하고 localStorage에 저장하는 방식으로 자동화
+- `vercel --prod`로 프로덕션 배포, 환경변수 Vercel 대시보드에 등록
+
+---
+
 ## 커밋 히스토리
 
 | 날짜 | 커밋 | 설명 |

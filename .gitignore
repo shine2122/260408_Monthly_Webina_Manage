@@ -6,3 +6,4 @@ build/
 logs/
 *.log
 config.json
+dashboard_config.js

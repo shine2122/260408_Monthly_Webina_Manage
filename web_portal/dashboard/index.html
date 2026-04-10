@@ -239,7 +239,11 @@
     </div>
     <div class="cfg-row">
       <label>테이블명</label>
-      <input type="text" id="cfg-table" placeholder="웨비나접수">
+      <input type="text" id="cfg-table" placeholder="웨비나접수_통합">
+    </div>
+    <div class="cfg-row">
+      <label>기준월 필터 (비워두면 전체 조회)</label>
+      <input type="text" id="cfg-month" placeholder="예: 4월">
     </div>
     <div class="cfg-actions">
       <button class="btn-secondary" id="btn-cfg-cancel">취소</button>
@@ -368,38 +372,24 @@ if (INJECTED_CFG.pat || INJECTED_CFG.baseId || INJECTED_CFG.tableName) {
 }
 
 // ════════════════════════════════════════════════════════════
-//  Airtable API 호출
+//  Airtable API 호출 (Vercel 프록시 경유)
 // ════════════════════════════════════════════════════════════
 async function fetchRecords() {
-  const { pat, baseId, tableName, monthLabel, monthField } = CFG;
-  if (!pat || !baseId || !tableName) return null;
+  const { tableName, monthLabel, monthField } = CFG;
 
-  let allRecords = [];
-  let offset = null;
-  const base = `https://api.airtable.com/v0/${encodeURIComponent(baseId)}/${encodeURIComponent(tableName)}`;
+  const url = new URL('/api/records', location.origin);
+  if (tableName) url.searchParams.set('table', tableName);
+  if (monthLabel) url.searchParams.set('month', monthLabel);
+  if (monthField) url.searchParams.set('monthField', monthField);
 
-  do {
-    const url = new URL(base);
-    if (monthLabel && monthField) {
-      url.searchParams.set('filterByFormula', `{${monthField}}='${monthLabel}'`);
-    }
-    if (offset) url.searchParams.set('offset', offset);
+  const res = await fetch(url.toString());
+  const data = await res.json();
 
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${pat}` }
-    });
+  if (!data.ok) {
+    throw new Error(data.message || '데이터 조회 실패');
+  }
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(`Airtable API 오류 (${res.status}): ${err?.error?.message || res.statusText}`);
-    }
-
-    const data = await res.json();
-    allRecords = allRecords.concat(data.records || []);
-    offset = data.offset || null;
-  } while (offset);
-
-  return allRecords;
+  return data.records;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -547,12 +537,6 @@ function applyView() {
 }
 
 async function loadData() {
-  const { pat, baseId, tableName } = CFG;
-
-  if (!pat || !baseId || !tableName) {
-    document.getElementById('banner').style.display = 'block';
-    return;
-  }
 
   document.getElementById('banner').style.display = 'none';
   hideError();
@@ -610,7 +594,8 @@ document.getElementById('btn-open-settings').addEventListener('click', () => {
   const cfg = loadCfg();
   document.getElementById('cfg-pat').value = cfg.pat || '';
   document.getElementById('cfg-base').value = cfg.baseId || '';
-  document.getElementById('cfg-table').value = cfg.tableName || '웨비나접수';
+  document.getElementById('cfg-table').value = cfg.tableName || '웨비나접수_통합';
+  document.getElementById('cfg-month').value = cfg.monthLabel || '';
   document.getElementById('cfg-overlay').classList.add('open');
 });
 
@@ -625,7 +610,8 @@ document.getElementById('btn-cfg-save').addEventListener('click', () => {
     ...CFG,
     pat: document.getElementById('cfg-pat').value.trim(),
     baseId: document.getElementById('cfg-base').value.trim(),
-    tableName: document.getElementById('cfg-table').value.trim() || '웨비나접수',
+    tableName: document.getElementById('cfg-table').value.trim() || '웨비나접수_통합',
+    monthLabel: document.getElementById('cfg-month').value.trim(),
   };
   CFG = saveCfg(CFG);
   document.getElementById('cfg-overlay').classList.remove('open');

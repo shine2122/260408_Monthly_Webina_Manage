@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/apply", "destination": "/apply/index.html" },
+    { "source": "/feedback", "destination": "/feedback/index.html" },
+    { "source": "/dashboard", "destination": "/dashboard/index.html" }
+  ]
+}

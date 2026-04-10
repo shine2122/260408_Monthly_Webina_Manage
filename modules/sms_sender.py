@@ -48,18 +48,8 @@ def _setup_logger():
 
 
 def _get_solapi_config(config):
-    """신규 solapi 설정과 기존 ppurio 설정을 모두 지원한다."""
-    legacy = config.get("ppurio", {}) if isinstance(config.get("ppurio"), dict) else {}
-    solapi = config.setdefault("solapi", {})
-
-    if not solapi.get("api_key"):
-        solapi["api_key"] = legacy.get("api_key", "")
-    if not solapi.get("api_secret"):
-        solapi["api_secret"] = legacy.get("api_secret", "")
-    if not solapi.get("sender_phone"):
-        solapi["sender_phone"] = legacy.get("sender_phone", "")
-
-    return solapi
+    """solapi 설정을 반환한다."""
+    return config.setdefault("solapi", {})
 
 
 def _load_solapi_sdk():

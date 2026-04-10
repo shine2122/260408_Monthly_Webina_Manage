@@ -22,6 +22,7 @@ def _base_dir():
 BASE_DIR = _base_dir()
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard.html")
+DASHBOARD_CONFIG_JS_PATH = os.path.join(BASE_DIR, "dashboard_config.js")
 
 DEFAULT_CONFIG = {
     "airtable": {
@@ -72,14 +73,7 @@ def load_config():
     cfg["airtable"].setdefault("current_webinar_record_id", "")
     cfg["airtable"]["table_name"] = "웨비나접수_통합"
 
-    legacy_sms = cfg.get("ppurio", {}) if isinstance(cfg.get("ppurio"), dict) else {}
     cfg.setdefault("solapi", {})
-    if not cfg["solapi"].get("api_key"):
-        cfg["solapi"]["api_key"] = legacy_sms.get("api_key", "")
-    if not cfg["solapi"].get("api_secret"):
-        cfg["solapi"]["api_secret"] = legacy_sms.get("api_secret", "")
-    if not cfg["solapi"].get("sender_phone"):
-        cfg["solapi"]["sender_phone"] = legacy_sms.get("sender_phone", "")
     cfg["solapi"].setdefault("api_key", "")
     cfg["solapi"].setdefault("api_secret", "")
     cfg["solapi"].setdefault("sender_phone", "")
@@ -105,12 +99,33 @@ def load_config():
             cfg["airtable"]["current_month"] = f"{datetime.strptime(webinar_date, '%Y-%m-%d').month}월"
         except ValueError:
             cfg["airtable"]["current_month"] = f"{datetime.now().month}월"
+    export_dashboard_config(cfg)
     return cfg
 
 
 def save_config(cfg):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+    export_dashboard_config(cfg)
+
+
+def _dashboard_config_payload(cfg):
+    airtable_cfg = cfg.get("airtable", {})
+    fields_cfg = airtable_cfg.get("fields", {})
+    return {
+        "pat": (airtable_cfg.get("api_key") or "").strip(),
+        "baseId": (airtable_cfg.get("base_id") or "").strip(),
+        "tableName": ((airtable_cfg.get("table_name") or "\uc6e8\ube44\ub098\uc811\uc218_\ud1b5\ud569")).strip(),
+        "monthLabel": (airtable_cfg.get("current_month") or "").strip(),
+        "monthField": ((fields_cfg.get("month") or "\uae30\uc900\uc6d4")).strip(),
+    }
+
+
+def export_dashboard_config(cfg=None):
+    payload = _dashboard_config_payload(cfg or load_config())
+    script_body = "window.__DASHBOARD_CFG__ = " + json.dumps(payload, ensure_ascii=False, indent=2) + ";\n"
+    with open(DASHBOARD_CONFIG_JS_PATH, "w", encoding="utf-8") as f:
+        f.write(script_body)
 
 
 # ════════════════════════════════════════════════════════════
@@ -172,14 +187,18 @@ class WebinarApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("크리AI티브 웨비나 자동화")
-        self.geometry("700x580")
-        self.minsize(680, 560)
+        self.geometry("780x660")
+        self.minsize(740, 600)
 
         self.config_data = load_config()
+        export_dashboard_config(self.config_data)
         self._setup_style()
 
         # ── 상단 테이블 바 ──
         self._build_table_bar()
+
+        # ── 하단 상태바 (notebook보다 먼저 pack) ──
+        self._build_status_bar()
 
         # ── 탭 ──
         self.notebook = ttk.Notebook(self)
@@ -187,13 +206,16 @@ class WebinarApp(tk.Tk):
 
         self.tab_send = ttk.Frame(self.notebook)
         self.tab_kakao = ttk.Frame(self.notebook)
+        self.tab_template = ttk.Frame(self.notebook)
         self.tab_settings = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_send, text="  발송 관리  ")
         self.notebook.add(self.tab_kakao, text="  카톡 공지  ")
+        self.notebook.add(self.tab_template, text="  템플릿 편집  ")
         self.notebook.add(self.tab_settings, text="  설정  ")
 
         self._build_send_tab()
         self._build_kakao_tab()
+        self._build_template_tab()
         self._build_settings_tab()
 
         # 스케줄러 시작
@@ -208,14 +230,69 @@ class WebinarApp(tk.Tk):
     def _setup_style(self):
         style = ttk.Style(self)
         style.theme_use("clam")
-        style.configure("TNotebook", background="#f4f5f7", borderwidth=0)
-        style.configure("TNotebook.Tab", padding=[14, 8], font=("", 10))
-        style.configure("TFrame", background="#f4f5f7")
-        style.configure("Section.TLabelframe", background="#fff", relief="flat",
-                        borderwidth=1, bordercolor="#e0e0e6")
-        style.configure("Section.TLabelframe.Label", background="#fff",
-                        font=("", 10, "bold"), foreground="#534AB7")
-        style.configure("TableBar.TFrame", background="#534AB7")
+
+        BG    = "#f4f5f7"
+        WHITE = "#ffffff"
+        BRAND = "#534AB7"
+        LIGHT = "#eeedf9"
+
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab", padding=[16, 9], font=("", 10))
+        style.map("TNotebook.Tab",
+                  background=[("selected", WHITE), ("!selected", BG)],
+                  foreground=[("selected", BRAND), ("!selected", "#666")])
+
+        style.configure("TFrame", background=BG)
+        style.configure("Section.TLabelframe", background=WHITE, relief="flat",
+                        borderwidth=1, bordercolor="#dde0f0")
+        style.configure("Section.TLabelframe.Label", background=WHITE,
+                        font=("", 10, "bold"), foreground=BRAND)
+
+        # Primary 버튼 (발송)
+        style.configure("Primary.TButton",
+                        background=BRAND, foreground=WHITE,
+                        font=("", 9, "bold"), padding=[10, 5])
+        style.map("Primary.TButton",
+                  background=[("active", "#3f37a0"), ("disabled", "#b0acd8")],
+                  foreground=[("disabled", "#e0dff5")])
+
+        # Secondary 버튼 (새로고침·기타)
+        style.configure("Secondary.TButton",
+                        background=LIGHT, foreground=BRAND,
+                        font=("", 9), padding=[8, 4])
+        style.map("Secondary.TButton",
+                  background=[("active", "#d8d5f5")])
+
+        # Test 버튼 (테스트 발송)
+        style.configure("Test.TButton",
+                        background="#e8f4fd", foreground="#0066cc",
+                        font=("", 9, "bold"), padding=[10, 5])
+        style.map("Test.TButton",
+                  background=[("active", "#cce8fa"), ("disabled", "#d0e8f5")])
+
+    # ════════════════════════════════════════════════════════
+    #  하단 상태바
+    # ════════════════════════════════════════════════════════
+    def _build_status_bar(self):
+        bar = tk.Frame(self, bg="#2d2b4e", height=26)
+        bar.pack(fill=tk.X, side=tk.BOTTOM)
+        bar.pack_propagate(False)
+
+        self.lbl_last_send = tk.Label(
+            bar, text="마지막 발송: -", bg="#2d2b4e", fg="#9896c0",
+            font=("", 8), padx=12)
+        self.lbl_last_send.pack(side=tk.LEFT)
+
+        tk.Label(bar, text="|", bg="#2d2b4e", fg="#4a4870").pack(side=tk.LEFT)
+
+        webinar_date = self.config_data.get("webinar", {}).get("date", "미설정")
+        self.lbl_status_date = tk.Label(
+            bar, text=f"웨비나: {webinar_date}", bg="#2d2b4e", fg="#9896c0",
+            font=("", 8), padx=12)
+        self.lbl_status_date.pack(side=tk.LEFT)
+
+        tk.Label(bar, text="v2.0", bg="#2d2b4e", fg="#4a4870",
+                 font=("", 8), padx=12).pack(side=tk.RIGHT)
 
     # ════════════════════════════════════════════════════════
     #  상단 테이블 바
@@ -309,28 +386,56 @@ class WebinarApp(tk.Tk):
 
         # ── 입금 확인 발송 ──
         sec1 = ttk.LabelFrame(frame, text="① 입금 확인 발송", style="Section.TLabelframe", padding=14)
-        sec1.pack(fill=tk.X, pady=(0, 10))
+        sec1.pack(fill=tk.X, pady=(0, 8))
         self.lbl_unsent = tk.Label(sec1, text="미발송 N명 확인 중...", bg="#fff", fg="#666", font=("", 9))
         self.lbl_unsent.pack(side=tk.LEFT)
-        ttk.Button(sec1, text="새로고침", command=self._refresh_counts).pack(side=tk.RIGHT, padx=(0, 6))
-        self.btn_confirm = ttk.Button(sec1, text="이메일+문자 발송", command=self._send_confirm)
+        ttk.Button(sec1, text="새로고침", style="Secondary.TButton",
+                   command=self._refresh_counts).pack(side=tk.RIGHT, padx=(0, 6))
+        self.btn_confirm = ttk.Button(sec1, text="이메일+문자 발송", style="Primary.TButton",
+                                      command=self._send_confirm)
         self.btn_confirm.pack(side=tk.RIGHT)
 
         # ── 웨비나 링크 발송 ──
         sec2 = ttk.LabelFrame(frame, text="② 웨비나 링크 발송 (D-1 자동 / 수동)", style="Section.TLabelframe", padding=14)
-        sec2.pack(fill=tk.X, pady=(0, 10))
+        sec2.pack(fill=tk.X, pady=(0, 8))
         self.lbl_link = tk.Label(sec2, text="입금완료 전체 N명", bg="#fff", fg="#666", font=("", 9))
         self.lbl_link.pack(side=tk.LEFT)
-        self.btn_link = ttk.Button(sec2, text="이메일+문자 발송", command=self._send_link)
+        self.btn_link = ttk.Button(sec2, text="이메일+문자 발송", style="Primary.TButton",
+                                   command=self._send_link)
         self.btn_link.pack(side=tk.RIGHT)
 
         # ── 피드백 링크 발송 ──
         sec3 = ttk.LabelFrame(frame, text="③ 피드백 링크 발송 (당일 22:10 자동 / 수동)", style="Section.TLabelframe", padding=14)
-        sec3.pack(fill=tk.X, pady=(0, 10))
+        sec3.pack(fill=tk.X, pady=(0, 8))
         self.lbl_feedback = tk.Label(sec3, text="입금완료 전체 N명", bg="#fff", fg="#666", font=("", 9))
         self.lbl_feedback.pack(side=tk.LEFT)
-        self.btn_feedback = ttk.Button(sec3, text="이메일+문자 발송", command=self._send_feedback)
+        self.btn_feedback = ttk.Button(sec3, text="이메일+문자 발송", style="Primary.TButton",
+                                       command=self._send_feedback)
         self.btn_feedback.pack(side=tk.RIGHT)
+
+        # ── 테스트 발송 ──
+        sec4 = ttk.LabelFrame(frame, text="④ 테스트 발송 (나에게 보내기)", style="Section.TLabelframe", padding=14)
+        sec4.pack(fill=tk.X, pady=(0, 8))
+
+        row1 = tk.Frame(sec4, bg="#fff")
+        row1.pack(fill=tk.X, pady=(0, 5))
+        tk.Label(row1, text="이메일", bg="#fff", font=("", 9), width=8, anchor="w").pack(side=tk.LEFT)
+        self.test_email_var = tk.StringVar(value=self.config_data.get("gmail", {}).get("sender_email", ""))
+        ttk.Entry(row1, textvariable=self.test_email_var, width=30).pack(side=tk.LEFT, padx=(0, 16))
+        tk.Label(row1, text="전화번호", bg="#fff", font=("", 9), width=7, anchor="w").pack(side=tk.LEFT)
+        self.test_phone_var = tk.StringVar(value=self.config_data.get("solapi", {}).get("sender_phone", ""))
+        ttk.Entry(row1, textvariable=self.test_phone_var, width=16).pack(side=tk.LEFT)
+
+        row2 = tk.Frame(sec4, bg="#fff")
+        row2.pack(fill=tk.X)
+        tk.Label(row2, text="발송 유형", bg="#fff", font=("", 9), width=8, anchor="w").pack(side=tk.LEFT)
+        self.test_type_var = tk.StringVar(value="입금 확인")
+        ttk.Combobox(row2, textvariable=self.test_type_var,
+                     values=["입금 확인", "웨비나 링크", "피드백"],
+                     state="readonly", width=14).pack(side=tk.LEFT, padx=(0, 10))
+        self.btn_test_send = ttk.Button(row2, text="테스트 발송", style="Test.TButton",
+                                        command=self._send_test)
+        self.btn_test_send.pack(side=tk.LEFT)
 
         # ── 로그 창 ──
         log_frame = ttk.LabelFrame(frame, text="발송 로그", style="Section.TLabelframe", padding=8)
@@ -353,7 +458,10 @@ class WebinarApp(tk.Tk):
         threading.Thread(target=_fetch, daemon=True).start()
 
     def _update_count_labels(self, unsent, paid):
-        self.lbl_unsent.config(text=f"미발송 {unsent}명 대기 중")
+        color = "#d32f2f" if unsent > 0 else "#388e3c"
+        weight = "bold" if unsent > 0 else ""
+        self.lbl_unsent.config(text=f"미발송  {unsent}명  대기 중", fg=color,
+                               font=("", 9, weight) if weight else ("", 9))
         self.lbl_link.config(text=f"입금완료 {paid}명 전체")
         self.lbl_feedback.config(text=f"입금완료 {paid}명 전체")
 
@@ -398,6 +506,9 @@ class WebinarApp(tk.Tk):
 
     def _send_link(self):
         from modules import airtable_client, email_sender, sms_sender
+        if not self.config_data.get("webinar", {}).get("meet_link", "").strip():
+            messagebox.showwarning("링크 미설정", "설정 탭에서 Google Meet 링크를 먼저 입력해 주세요.")
+            return
         targets = airtable_client.get_paid_registrants()
         if not targets:
             messagebox.showinfo("알림", "발송 대상이 없습니다."); return
@@ -415,6 +526,9 @@ class WebinarApp(tk.Tk):
 
     def _send_feedback(self):
         from modules import airtable_client, email_sender, sms_sender
+        if not self.config_data.get("webinar", {}).get("feedback_link", "").strip():
+            messagebox.showwarning("링크 미설정", "설정 탭에서 피드백 링크를 먼저 입력해 주세요.")
+            return
         targets = airtable_client.get_paid_registrants()
         if not targets:
             messagebox.showinfo("알림", "발송 대상이 없습니다."); return
@@ -436,6 +550,43 @@ class WebinarApp(tk.Tk):
         self.log_box.insert(tk.END, msg + "\n")
         self.log_box.see(tk.END)
         self.log_box.config(state=tk.DISABLED)
+        if "완료" in msg or "발송" in msg:
+            self.lbl_last_send.config(
+                text=f"마지막 발송: {datetime.now().strftime('%H:%M:%S')}")
+
+    def _send_test(self):
+        email = self.test_email_var.get().strip()
+        phone = self.test_phone_var.get().strip()
+        send_type = self.test_type_var.get()
+
+        if not email and not phone:
+            messagebox.showwarning("입력 필요", "이메일 또는 전화번호를 입력해 주세요.")
+            return
+
+        TYPE_MAP = {
+            "입금 확인":   ("email_confirm", "sms_confirm"),
+            "웨비나 링크": ("email_link",    "sms_link"),
+            "피드백":      ("email_feedback", "sms_feedback"),
+        }
+        email_tpl, sms_tpl = TYPE_MAP[send_type]
+        test_recipient = [{"name": "테스트", "email": email, "phone": phone, "record_id": None}]
+
+        self.btn_test_send.config(state=tk.DISABLED)
+        self._log(f"[테스트 발송] {send_type} → {email or '-'} / {phone or '-'}")
+
+        def _task():
+            from modules import email_sender, sms_sender
+            e_ok = e_fail = s_ok = s_fail = 0
+            if email:
+                e_ok, e_fail = email_sender.send_bulk_email(test_recipient, email_tpl)
+            if phone:
+                s_ok, s_fail = sms_sender.send_bulk_sms(test_recipient, sms_tpl)
+            result_msg = f"이메일 {'성공' if e_ok else ('실패' if email else '-')} / 문자 {'성공' if s_ok else ('실패' if phone else '-')}"
+            self.after(0, lambda: self._log(f"[테스트 결과] {result_msg}"))
+            self.after(0, lambda: messagebox.showinfo("테스트 발송 완료", result_msg))
+            self.after(0, lambda: self.btn_test_send.config(state=tk.NORMAL))
+
+        threading.Thread(target=_task, daemon=True).start()
 
     def _sync_monthly_summary_async(self):
         def _task():
@@ -500,7 +651,73 @@ class WebinarApp(tk.Tk):
         self.kakao_output.delete("1.0", tk.END)
 
     # ════════════════════════════════════════════════════════
-    #  탭③ 설정
+    #  탭③ 템플릿 편집
+    # ════════════════════════════════════════════════════════
+    def _build_template_tab(self):
+        frame = self.tab_template
+        frame.configure(padding=12)
+
+        hint = tk.Label(frame,
+                        text="사용 가능 변수:  {name}    {meet_link}    {feedback_link}",
+                        bg="#f4f5f7", fg="#888", font=("", 8))
+        hint.pack(anchor="w", pady=(0, 6))
+
+        sub_nb = ttk.Notebook(frame)
+        sub_nb.pack(fill=tk.BOTH, expand=True)
+        self._template_sub_nb = sub_nb
+
+        TEMPLATES = [
+            ("① 입금 확인", "sms_confirm"),
+            ("② 웨비나 링크", "sms_link"),
+            ("③ 피드백", "sms_feedback"),
+        ]
+        self.tpl_texts = {}
+
+        for tab_label, tpl_name in TEMPLATES:
+            sub_frame = ttk.Frame(sub_nb, padding=8)
+            sub_nb.add(sub_frame, text=f"  {tab_label}  ")
+
+            st = scrolledtext.ScrolledText(
+                sub_frame, font=("Consolas", 10), wrap=tk.WORD,
+                relief=tk.FLAT, bg="#ffffff", bd=1)
+            st.pack(fill=tk.BOTH, expand=True)
+
+            tpl_path = os.path.join(BASE_DIR, "templates", f"{tpl_name}.txt")
+            try:
+                with open(tpl_path, "r", encoding="utf-8") as f:
+                    st.insert("1.0", f.read())
+            except FileNotFoundError:
+                st.insert("1.0", "")
+
+            self.tpl_texts[tpl_name] = st
+
+        btn_row = tk.Frame(frame, bg="#f4f5f7")
+        btn_row.pack(fill=tk.X, pady=(8, 0))
+        ttk.Button(btn_row, text="현재 탭 저장", style="Secondary.TButton",
+                   command=self._save_current_template).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(btn_row, text="전체 저장", style="Primary.TButton",
+                   command=self._save_all_templates).pack(side=tk.LEFT)
+
+    def _save_current_template(self):
+        TEMPLATE_NAMES = ["sms_confirm", "sms_link", "sms_feedback"]
+        idx = self._template_sub_nb.index(self._template_sub_nb.select())
+        self._write_template_file(TEMPLATE_NAMES[idx])
+        messagebox.showinfo("저장 완료", f"{TEMPLATE_NAMES[idx]}.txt 저장되었습니다.")
+
+    def _save_all_templates(self):
+        for tpl_name in ["sms_confirm", "sms_link", "sms_feedback"]:
+            self._write_template_file(tpl_name)
+        messagebox.showinfo("저장 완료", "3개 템플릿이 모두 저장되었습니다.")
+
+    def _write_template_file(self, tpl_name):
+        content = self.tpl_texts[tpl_name].get("1.0", tk.END).rstrip("\n")
+        tpl_path = os.path.join(BASE_DIR, "templates", f"{tpl_name}.txt")
+        with open(tpl_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        self._log(f"[템플릿 저장] {tpl_name}.txt")
+
+    # ════════════════════════════════════════════════════════
+    #  탭④ 설정
     # ════════════════════════════════════════════════════════
     def _build_settings_tab(self):
         frame = self.tab_settings
@@ -569,8 +786,10 @@ class WebinarApp(tk.Tk):
 
         btn_frame = tk.Frame(inner, bg="#f4f5f7")
         btn_frame.pack(fill=tk.X, padx=4, pady=8)
-        ttk.Button(btn_frame, text="저장", command=self._save_settings).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(btn_frame, text="연결 테스트", command=self._test_connections).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="저장", style="Primary.TButton",
+                   command=self._save_settings).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(btn_frame, text="연결 테스트", style="Secondary.TButton",
+                   command=self._test_connections).pack(side=tk.LEFT)
 
         sep = ttk.Separator(inner, orient=tk.HORIZONTAL)
         sep.pack(fill=tk.X, padx=4, pady=10)
@@ -586,7 +805,6 @@ class WebinarApp(tk.Tk):
         self.config_data["airtable"]["api_key"]        = sv["at_key"].get().strip()
         self.config_data["airtable"]["base_id"]        = sv["at_base"].get().strip()
         self.config_data.setdefault("solapi", {})
-        self.config_data.pop("ppurio", None)
         self.config_data["solapi"]["api_key"]          = sv["sms_key"].get().strip()
         self.config_data["solapi"]["api_secret"]       = sv["sms_secret"].get().strip()
         self.config_data["solapi"]["sender_phone"]     = sv["sms_phone"].get().strip()
@@ -603,6 +821,8 @@ class WebinarApp(tk.Tk):
         self.config_data["webinar"]["topic2"]          = sv["wb_topic2"].get().strip()
         save_config(self.config_data)
         self._sync_monthly_summary_async()
+        self.lbl_status_date.config(
+            text=f"웨비나: {self.config_data['webinar']['date'] or '미설정'}")
         messagebox.showinfo("저장 완료", "설정이 저장되었습니다.")
 
     def _test_connections(self):
@@ -622,6 +842,7 @@ class WebinarApp(tk.Tk):
 
     def _open_dashboard(self):
         if os.path.exists(DASHBOARD_PATH):
+            export_dashboard_config(self.config_data)
             webbrowser.open(f"file:///{DASHBOARD_PATH.replace(chr(92), '/')}")
         else:
             messagebox.showerror("오류", f"dashboard.html을 찾을 수 없습니다.\n{DASHBOARD_PATH}")
